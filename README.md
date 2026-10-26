@@ -124,43 +124,6 @@ low-spin events. Its spread under fits from 5, 10 and 15 M is ≤ 4%, except 020
 `t_a = 5 M` on, the result also hardly depends on which overtones are included. Before that, the QNM description itself is not reliable. For example, for 1424 with
 `t_a = t0` and n ≤ 2 deformed, the deformation reaches 27× the peak.
 
-### Legacy: `replace` (first version of this pipeline)
-
-```
-python compute_modified_ringdown.py --method replace
-```
-
-* The NR waveform is cut at the scanned `t0`, and the n ≤ 3 QNM fit from `t0` with the deformed
-  frequencies is attached. The QNM amplitudes are referenced to `t0`, so the deformed model equals
-  the GR fit at `t0`.
-* A 5 M Planck blend from data to model removes the fit residual at the edge of the fit window,
-  which is up to 10% of the peak (`--switch-width 0` gives the hard cut).
-* This reproduces the outputs of the first version exactly.
-* It is kept for comparison and should not be used for results. At the scanned `t0` (−8.5 to
-  +10 M) the n = 2, 3 amplitudes are fit artefacts: for 1936 they are up to 30× the signal, and
-  they change by orders of magnitude when `t0` moves. Deforming these nearly cancelling amplitudes produces a spurious
-  change right after `t0`.
-* `output/plots/jump_1936_1424.png` illustrates this for events 1936 and 1424:
-  * the fit residual at the join;
-  * the replace-method waveform with the deformed QNMs, next to the plain GR fit;
-  * hard cut vs. blend.
-
-### Comparison of strategies (development study, events 1936, 1424, 2108)
-
-| strategy | λ_NH=0 = NR data | early deviation (h, λ=+1) / peak | first-echo change (λ=+1) |
-|---|---|---|---|
-| replace (legacy, n ≤ 3 at t0) | no (1–5% off) | 0.36–0.58 | 17–37% |
-| NR data + Δ, same n ≤ 3 amplitudes at t0 | yes | 0.36–0.58 | 17–37% |
-| causal "pole-shift" filter moving all n ≤ 3 poles, no fit | yes | 0.24–0.29 | 14–16% |
-| multiply post-t0 data by `e^{−i(ω'_0−ω_0)(t−t0)}` | yes | 0.31–0.36 | – (wrong for mirror modes) |
-| **NR data + Δ, stable n ≤ 1 modes, `t_a = 5 M` (default)** | **yes** | **0.13–0.15** | **1.2–2.2%** |
-
-* "Early deviation" is the maximum within 15 M after the switch-on.
-* The default's early deviation is consistent with the phase drift caused by the frequency shift
-  of the fundamental mode alone, roughly `|A_0(t_a)| δ Re(ω_0) τ e^{−τ/τ_0}` with a maximum
-  near τ = τ_0.
-* The pole-shift filter moves about 25% of amplitude between modes, so its late-time amplitude
-  depends on the number of overtones.
 
 ## Files
 
@@ -309,40 +272,6 @@ These parts follow the original implementation of [D25] App. A. Its content, wri
 * **Strain** ([D25] Eq. A10): `h_echo = −4 FFT[high_pass(low_pass(K Y_seed/ω², |ω| ≤ 10), |ω| ≥ 7·10⁻⁵)]`.
   The filters and the factor −4 are those of the original implementation.
 
-## Decisions and deviations from the original implementation
-
-1. **Remnant fixed to the SXS metadata.** The QNM amplitudes are fitted by linear least squares
-   with the remnant's `(M_f, χ_f)`; there is no nonlinear (χ, M) fit. The free Nelder–Mead fit is
-   strongly biased on `Y_in`: for 1936 it gives χ = 0.21, M = 1.10, against the true 0.022 and
-   0.985. The sign of χ_f is kept: the mirror modes cover both signs, and Ω_H uses the sign.
-2. **Modified ringdown:** `residual` construction with stable modes (see
-   [Modified ringdown](#modified-ringdown)). The legacy `replace` construction is available.
-3. **t0 scan with n ≤ 3** instead of 5. It only sets the start of the echo seed. One `t0` per event,
-   taken from the scan of `Y_in`; the scan of `h` alone has no interior minimum.
-4. **Extended time grid.** `fft_for_waveforms_CCE` is unchanged except for two fixes:
-   * `t_end` is clamped to the last data sample; the original extrapolated the spline to 1200 M;
-   * the number of samples is made even, which `interpolate_coeff` assumes.
-
-   Beyond the trustworthy data, the fields are continued by their GR QNM fit (see above).
-5. **Wall reflectivity, Eq. (16)** – two adaptations of the printed formula:
-   * The Boltzmann factor uses `|ω̃|`, like the original reflectivity. Without the modulus it grows
-     exponentially for ω̃ < 0.
-   * The phase is `e^{+iω̃ t_echo}`, which is a delay in this code's Fourier convention. Numerically,
-     the first echo arrives `t_echo` after `t0`.
-6. **Kerr wall, Schwarzschild barrier.** `T_H`, `Ω_H` and `S_BH` use the remnant spin. The barrier
-   coefficients (C, D) and the Teukolsky–Starobinsky constants are Schwarzschild ([D25] states the
-   same restriction). This is consistent for the seven low-spin remnants (|χ_f| ≤ 0.09) and
-   approximate for 1155 (χ_f = 0.69), 0334 (0.31) and 2108 (0.29). The scripts warn for these.
-7. **Safety cut:** K is set to 0 for |ω| beyond the coefficient table (3.96/M), where the splines
-   would extrapolate. R_wall is ~e⁻²⁵ there anyway.
-8. **Unchanged:**
-   * `low_pass(…, 1)` for `Y_in`;
-   * Planck taper of the seed with Δv = 8 M;
-   * hold after 100 M;
-   * the filters and factor of the strain conversion;
-   * the transfer-function structure and `R_BH`.
-
-   The `A_echo` parameter of Table I does not appear in Eqs. (16)–(17) and is not used.
 
 ## Checks
 
