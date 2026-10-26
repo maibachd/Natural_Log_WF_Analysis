@@ -1,0 +1,8 @@
+numpy
+scipy
+h5py
+matplotlib
+astropy
+qnm
+# only for fetch_remnant_metadata.py (adding new events):
+# sxs

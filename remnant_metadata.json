@@ -1,0 +1,222 @@
+{
+  "0205": {
+    "sxs_id": "SXS:BBH:0205",
+    "sxs_version": "v3.0",
+    "reference_mass_ratio": 7.001089078006648,
+    "reference_dimensionless_spin1": [
+      1.3670395042983342e-08,
+      1.9878628759681857e-08,
+      -0.3998591740957318
+    ],
+    "reference_dimensionless_spin2": [
+      -1.5145840446085465e-08,
+      2.7483710253589677e-08,
+      -2.05458501434607e-06
+    ],
+    "reference_total_mass": 1.0001474537325794,
+    "remnant_mass": 0.9902017851092286,
+    "remnant_dimensionless_spin": [
+      6.338398580863084e-09,
+      8.782618251641095e-09,
+      0.061951325340325304
+    ]
+  },
+  "0206": {
+    "sxs_id": "SXS:BBH:0206",
+    "sxs_version": "v3.0",
+    "reference_mass_ratio": 7.001214018453055,
+    "reference_dimensionless_spin1": [
+      1.6853521227827864e-08,
+      1.0349357340882232e-08,
+      -0.3998668166917123
+    ],
+    "reference_dimensionless_spin2": [
+      9.506739414427676e-08,
+      8.830491400710943e-09,
+      -5.61057472673216e-07
+    ],
+    "reference_total_mass": 1.0001440792682461,
+    "remnant_mass": 0.9902288506758636,
+    "remnant_dimensionless_spin": [
+      -3.805735732810167e-09,
+      3.815569985998588e-09,
+      0.061943595141914345
+    ]
+  },
+  "0334": {
+    "sxs_id": "SXS:BBH:0334",
+    "sxs_version": "v3.0",
+    "reference_mass_ratio": 1.999808580369448,
+    "reference_dimensionless_spin1": [
+      2.2251185979193726e-07,
+      -4.177811630655764e-07,
+      -0.8006034286058811
+    ],
+    "reference_dimensionless_spin2": [
+      1.283855664377287e-07,
+      -1.4586226327397822e-07,
+      -0.7996426115453725
+    ],
+    "reference_total_mass": 1.0000245767797753,
+    "remnant_mass": 0.9735350382167912,
+    "remnant_dimensionless_spin": [
+      -5.232970630382984e-08,
+      -2.5518831488220583e-08,
+      0.3057620254603309
+    ]
+  },
+  "1155": {
+    "sxs_id": "SXS:BBH:1155",
+    "sxs_version": "v3.0",
+    "reference_mass_ratio": 1.0000000167839966,
+    "reference_dimensionless_spin1": [
+      -8.511459006473348e-09,
+      -5.32509232029535e-10,
+      2.6049713985325382e-05
+    ],
+    "reference_dimensionless_spin2": [
+      1.119811708428109e-08,
+      -2.325004143378909e-09,
+      2.5990335635437754e-05
+    ],
+    "reference_total_mass": 0.9999897851498611,
+    "remnant_mass": 0.9516030813669274,
+    "remnant_dimensionless_spin": [
+      1.350887127911552e-09,
+      -2.833356925305944e-09,
+      0.686439992279111
+    ]
+  },
+  "1424": {
+    "sxs_id": "SXS:BBH:1424",
+    "sxs_version": "v3.0",
+    "reference_mass_ratio": 6.464235669246032,
+    "reference_dimensionless_spin1": [
+      -4.139231244171266e-07,
+      8.029222867483723e-07,
+      -0.6565353181712928
+    ],
+    "reference_dimensionless_spin2": [
+      -1.3891313054741116e-06,
+      -1.1109987717748074e-06,
+      -0.7990574660813997
+    ],
+    "reference_total_mass": 1.0001904139493836,
+    "remnant_mass": 0.9907225060941578,
+    "remnant_dimensionless_spin": [
+      -3.897770981986456e-07,
+      1.1446428032049963e-06,
+      -0.09292691042351062
+    ]
+  },
+  "1448": {
+    "sxs_id": "SXS:BBH:1448",
+    "sxs_version": "v3.0",
+    "reference_mass_ratio": 6.94523698387945,
+    "reference_dimensionless_spin1": [
+      -1.1521529854159085e-07,
+      -5.967772312511736e-07,
+      -0.48136288440420333
+    ],
+    "reference_dimensionless_spin2": [
+      -3.404084614712166e-07,
+      -2.1601491319344204e-07,
+      0.5248055165714381
+    ],
+    "reference_total_mass": 1.0001531725246864,
+    "remnant_mass": 0.9903645381481799,
+    "remnant_dimensionless_spin": [
+      2.782453268797883e-08,
+      -6.221761659427828e-07,
+      0.012515210734074338
+    ]
+  },
+  "1449": {
+    "sxs_id": "SXS:BBH:1449",
+    "sxs_version": "v3.0",
+    "reference_mass_ratio": 4.185557120563789,
+    "reference_dimensionless_spin1": [
+      2.4602085121801394e-07,
+      3.799658107911711e-07,
+      -0.8002198614323907
+    ],
+    "reference_dimensionless_spin2": [
+      1.7087891014151175e-07,
+      2.2514929782296635e-08,
+      -0.34445162792407685
+    ],
+    "reference_total_mass": 0.9999205127672693,
+    "remnant_mass": 0.9854397919406734,
+    "remnant_dimensionless_spin": [
+      1.8746737324750583e-07,
+      1.5370124454467762e-07,
+      0.010499715325460884
+    ]
+  },
+  "1455": {
+    "sxs_id": "SXS:BBH:1455",
+    "sxs_version": "v3.0",
+    "reference_mass_ratio": 8.000437786433437,
+    "reference_dimensionless_spin1": [
+      -6.521440737277283e-07,
+      5.942399388524546e-07,
+      -0.39770980504692327
+    ],
+    "reference_dimensionless_spin2": [
+      8.238932572564901e-08,
+      -9.772715065910561e-08,
+      0.0014835284808962755
+    ],
+    "reference_total_mass": 1.0000515162328902,
+    "remnant_mass": 0.9915200422234396,
+    "remnant_dimensionless_spin": [
+      -7.767034913522836e-07,
+      6.160065318265017e-07,
+      0.02129911953675408
+    ]
+  },
+  "1936": {
+    "sxs_id": "SXS:BBH:1936",
+    "sxs_version": "v3.0",
+    "reference_mass_ratio": 3.999044230321012,
+    "reference_dimensionless_spin1": [
+      -6.375153839933625e-07,
+      6.201146614471016e-08,
+      -0.8000447660217345
+    ],
+    "reference_dimensionless_spin2": [
+      -2.769236371163063e-07,
+      -2.608763264433131e-08,
+      -0.7993086675962736
+    ],
+    "reference_total_mass": 1.0000395802555744,
+    "remnant_mass": 0.9851822090685954,
+    "remnant_dimensionless_spin": [
+      -2.27611011900215e-07,
+      -4.034518675275932e-08,
+      0.021659435916064902
+    ]
+  },
+  "2108": {
+    "sxs_id": "SXS:BBH:2108",
+    "sxs_version": "v3.0",
+    "reference_mass_ratio": 1.9997985995277816,
+    "reference_dimensionless_spin1": [
+      4.511656786341787e-08,
+      8.041159379958943e-09,
+      -0.8498756411973764
+    ],
+    "reference_dimensionless_spin2": [
+      5.0164079258613804e-08,
+      9.926283443843664e-09,
+      -0.8496323511536871
+    ],
+    "reference_total_mass": 1.0000819692734846,
+    "remnant_mass": 0.9740894724120819,
+    "remnant_dimensionless_spin": [
+      -5.767778613328856e-09,
+      -1.959600709884265e-08,
+      0.2853784674726425
+    ]
+  }
+}
