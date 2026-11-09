@@ -5,7 +5,12 @@ For every event:
   1. Load the (2,2) mode of the strain h and of Psi0 (CCE data of the event folder),
      with t = 0 at the peak of |h|.
   2. Compute the ingoing field at the horizon, Y_22^in = FFT[Psi0 C_in]
-     ([D25] App. A, see nl_utils), which later seeds the echoes.
+     ([D25] App. A, see nl_utils), which later seeds the echoes. C_in is taken
+     from the Kerr barrier tables for the remnant spin chi_f
+     (coefficients/chi_<chi_f>/, computed with Mathematica on first use, see
+     nl_utils.load_bh_coefficients), evaluated at M_f omega (the tables are in
+     units of the remnant mass); --schwarzschild-coefficients uses the chi = 0
+     tables of [D25] instead, evaluated at M omega as in the original.
   3. Take the Kerr QNM spectrum omega^Kerr_22n(M_f, chi_f) of the remnant
      (SXS metadata, remnant_metadata.json) and determine the ringdown start t0
      (= v_Sigma of [D25]) as the minimum of the QNM-fit mismatch of Y_in over a
@@ -51,7 +56,7 @@ import numpy as np
 import nl_utils as nl
 
 
-def compute_event(event, args, coeffs):
+def compute_event(event, args):
     event = nl.normalize_event_id(event)
     print(f"\n=== event {event} ({args.method}) ===")
 
@@ -60,9 +65,16 @@ def compute_event(event, args, coeffs):
     rem_md = nl.load_remnant(event)
     remnant = nl.Remnant(mass=rem_md["mass"], chi=rem_md["chi"], m_total_solar=args.m_total)
     print(f"remnant ({rem_md['sxs_id']}): M_f = {remnant.mass:.5f} M, chi_f = {remnant.chi:+.4f}")
-    if abs(remnant.chi) > nl.SCHWARZSCHILD_SPIN_WARNING:
-        warnings.warn(f"event {event}: |chi_f| = {abs(remnant.chi):.2f}; the barrier coefficients (C, D, c, d) "
-                      "are Schwarzschild, so Y_in and the echo transfer function are only approximate for this remnant.")
+    if args.schwarzschild_coefficients:
+        coeffs = nl.load_bh_coefficients()
+    else:
+        coeffs = nl.load_bh_coefficients(remnant.chi, mass=remnant.mass)
+    print(f"barrier coefficients: {coeffs.source} (chi = {coeffs.chi:+.{nl.SPIN_COEFF_DIGITS}f}, "
+          f"evaluated at {coeffs.mass:.5f} M omega)")
+    if args.schwarzschild_coefficients and abs(remnant.chi) > nl.SCHWARZSCHILD_SPIN_WARNING:
+        warnings.warn(f"event {event}: |chi_f| = {abs(remnant.chi):.2f}, but the barrier coefficients are those of "
+                      "Schwarzschild (--schwarzschild-coefficients), so Y_in and the echo transfer function are only "
+                      "approximate for this remnant.")
 
     # ---- 2. frequency domain and ingoing field ([D25] App. A) ----------------
     freq, fft_psi0, t_data = nl.fft_for_waveforms_CCE(data["time"], data["psi0"])
@@ -174,6 +186,7 @@ def compute_event(event, args, coeffs):
             method=args.method, n_overtones=args.n_overtones, n_scan=args.n_scan, upper_t=args.upper_t,
             t0=t0, t_ref=t_ref, t_attach=t_attach, switch_width=args.switch_width,
             mismatch_h=fits["h"]["mismatch"], mismatch_Y_in=fits["Y_in"]["mismatch"],
+            coeff_tables=coeffs.source, coeff_chi=coeffs.chi, coeff_mass=coeffs.mass,
         )
         if args.method == "residual":
             attrs.update(t_fit=args.t_fit, t_cont=t_cont, cont_width=args.cont_width)
@@ -249,6 +262,9 @@ def parse_args():
                              "fraction of the ringdown peak")
     parser.add_argument("--n-scan", type=int, default=3,
                         help="highest overtone of the QNM model used in the t0 scan (the original used 5)")
+    parser.add_argument("--schwarzschild-coefficients", action="store_true",
+                        help="use the chi = 0 barrier tables of [D25] (coefficients/{C,D}Coeff.h5) for every event "
+                             "instead of the Kerr tables for the remnant spin")
     parser.add_argument("--t0-min", type=float, default=-20.0, help="start of the t0 scan [M]")
     parser.add_argument("--t0-max", type=float, default=10.0, help="end of the t0 scan [M]")
     parser.add_argument("--t0-num", type=int, default=121, help="number of t0 values")
@@ -274,6 +290,5 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    coeffs = nl.load_bh_coefficients()
     for ev in args.events:
-        compute_event(ev, args, coeffs)
+        compute_event(ev, args)

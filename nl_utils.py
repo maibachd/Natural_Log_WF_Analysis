@@ -33,11 +33,20 @@ repository); everything they do is written out here. Functions marked
 The construction of the modified ringdown (section "Modified ringdown" below) is
 new; its references are given there.
 
+The wall reflectivity and the echo-delay constant kappa_echo follow
+
+    [WOA19] Q. Wang, N. Oshita, N. Afshordi, "Echoes from quantum black holes",
+            PRD 101, 024031 (2020), arXiv:1905.00446 (= ref. [17] of the PDF),
+    [OA23]  N. Oshita, N. Afshordi, "From entropy to echoes: counting the
+            quasi-normal modes and the quantum limit of silence",
+            PLB 841, 137901 (2023), arXiv:2302.08964 (= ref. [15] of the PDF).
+
 Units and conventions
 ---------------------
 All times/frequencies are in units of the total (initial) mass M of the NR
 simulation, G = c = 1; t = 0 is the peak of |h_22|. Angular frequencies are used
-throughout (omega = 2 pi f). Fourier convention (that of the original
+throughout (omega = 2 pi f). The barrier tables are in units of the remnant mass
+and are converted to units of M (BHCoefficients, "Units"; table_on_grid). Fourier convention (that of the original
 implementation): time -> frequency is np.fft.ifft, frequency -> time is
 np.fft.fft, both with norm="ortho". In this convention a signal ~ exp(-i omega t)
 with omega > 0 appears at positive frequency and a time delay Delta multiplies
@@ -45,6 +54,10 @@ the spectrum by exp(+i omega Delta).
 """
 
 import json
+import os
+import shutil
+import subprocess
+import tempfile
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -64,6 +77,8 @@ from scipy.interpolate import BSpline, splrep
 
 PROJECT_DIR = Path(__file__).resolve().parent
 COEFF_DIR = PROJECT_DIR / "coefficients"          # CCoeff.h5, DCoeff.h5 (see BHCoefficients)
+COEFF_SCRIPT = COEFF_DIR / "compute_coefficients.wl"
+SPIN_COEFF_DIGITS = 4   # Kerr tables are computed for chi rounded to this many decimals
 REMNANT_FILE = PROJECT_DIR / "remnant_metadata.json"
 OUTPUT_DIR = PROJECT_DIR / "output"
 RINGDOWN_DIR = OUTPUT_DIR / "ringdown"
@@ -72,8 +87,9 @@ PLOT_DIR = OUTPUT_DIR / "plots"
 
 DEFAULT_EVENTS = ["0205", "0206", "0334", "1155", "1424", "1448", "1449", "1455", "1936", "2108"]
 
-# The C/D coefficient tables (and the Teukolsky-Starobinsky constants c_coeff,
-# d_coeff) describe a Schwarzschild barrier. Above this remnant spin we warn.
+# The [D25] tables (and c_coeff, d_coeff, R_BH_T) describe a Schwarzschild
+# barrier. If they are used (--schwarzschild-coefficients) for a remnant with
+# |chi_f| above this value, compute_modified_ringdown.py warns.
 SCHWARZSCHILD_SPIN_WARNING = 0.1
 
 
@@ -144,15 +160,37 @@ def load_remnant(event):
 @dataclass
 class BHCoefficients:
     """
-    Tabulated coefficients of the l = 2 Schwarzschild potential barrier, as a
-    function of the angular frequency M omega (in units of the remnant mass).
-    They were computed with the Black Hole Perturbation Toolkit
-    (bhptoolkit.org, Mathematica) for [D25]; see [D25] Eqs. (A1)-(A3) and
-    [M22] for their definition. In this code they enter as
+    Tabulated coefficients of the l = m = 2 potential barrier, as a function of
+    the angular frequency M omega (in units of the remnant mass), computed with
+    the Black Hole Perturbation Toolkit (bhptoolkit.org, Mathematica); see
+    [D25] Eqs. (A1)-(A3) and [M22] for their definition. They are the "Up"
+    amplitudes of the Teukolsky radial function,
+      DCoeff.h5:  TeukolskyRadial[-2, 2, 2, chi, omega]["Up"]["Amplitudes"]
+      CCoeff.h5:  TeukolskyRadial[+2, 2, 2, chi, omega]["Up"]["Amplitudes"]
+    with "inc" = "Incidence" and "ref" = "Reflection" (see
+    coefficients/Coeff_QG_Mem.nb and coefficients/compute_coefficients.wl).
+    coefficients/{C,D}Coeff.h5 are the chi = 0 tables of [D25];
+    coefficients/chi_<chi>/ hold the tables for a Kerr remnant (see
+    load_bh_coefficients). In this code they enter as
       * C_in:  Y_in(omega) = Psi0(omega) C_in(omega)   (ingoing field at the horizon, ingoing_field)
-      * D_in, D_out: barrier reflectivity R_BH = -(D_in/D_out) d(omega)/(4 c(omega))
+      * D_in, D_out: barrier reflectivity R_BH = -(D_in/D_out) D(omega)/(4 C(omega))
                      and transmission factor 1/D_out of the transfer function.
     C_out is read for completeness but not used.
+    chi is the spin the tables were computed for (0 for the [D25] tables).
+    eigenvalue (Kerr tables only, from Eigenvalue.h5) is the spheroidal
+    eigenvalue on the grid freq_D, needed for the Starobinsky constant
+    (barrier_reflectivity_table); None for the [D25] tables.
+
+    Units. The tables are functions of M_f omega and dimensionful in units of
+    the remnant mass M_f (TeukolskyRadial sets the BH mass to 1), while this
+    code works in units of the total mass M. mass = M_f/M converts them
+    (table_on_grid): the tables are evaluated at M_f omega, and an amplitude
+    with dimension length^d is multiplied by mass^d. From the asymptotic forms
+    of the "Up" solutions ([M22] Eq. (5): -2R ~ r^3 at infinity,
+    D_out + Delta^2 D_in at the horizon; +2R ~ r^-5 and Delta^-2 C_in):
+    d = -1 for C_in and D_in, d = 3 for D_out; R_BH is dimensionless. The [D25]
+    tables are used with mass = 1, i.e. exactly as in the original
+    implementation, which evaluated them at M omega.
     """
     freq_C: np.ndarray
     C_in: np.ndarray
@@ -160,6 +198,10 @@ class BHCoefficients:
     freq_D: np.ndarray
     D_in: np.ndarray
     D_out: np.ndarray
+    chi: float = 0.0
+    source: str = ""
+    eigenvalue: np.ndarray = None
+    mass: float = 1.0
 
 
 def _read_coeff_file(filename):
@@ -177,10 +219,114 @@ def _read_coeff_file(filename):
     return freq, c_in, c_out
 
 
-def load_bh_coefficients():
-    freq_C, C_in, C_out = _read_coeff_file(COEFF_DIR / "CCoeff.h5")
-    freq_D, D_in, D_out = _read_coeff_file(COEFF_DIR / "DCoeff.h5")
-    return BHCoefficients(freq_C, C_in, C_out, freq_D, D_in, D_out)
+def _read_eigenvalue_file(filename):
+    with h5py.File(filename, "r") as f:
+        return f["frequency"][()], f["eigenvalue"][()]
+
+
+def spin_coeff_dir(chi):
+    """Folder of the Kerr tables for spin chi (signed, rounded to SPIN_COEFF_DIGITS), e.g. coefficients/chi_+0.0217."""
+    return COEFF_DIR / f"chi_{round(chi, SPIN_COEFF_DIGITS) + 0.0:+.{SPIN_COEFF_DIGITS}f}"
+
+
+def find_wolframscript():
+    """wolframscript executable: $NL_WOLFRAMSCRIPT, then the PATH, then the default macOS install location."""
+    candidates = [os.environ.get("NL_WOLFRAMSCRIPT"), shutil.which("wolframscript"),
+                  "/Applications/Mathematica.app/Contents/MacOS/wolframscript",
+                  "/Applications/Wolfram.app/Contents/MacOS/wolframscript"]
+    for path in candidates:
+        if path and Path(path).is_file():
+            return path
+    raise FileNotFoundError("wolframscript not found; install Mathematica with the BH Perturbation Toolkit "
+                            "(Teukolsky package) or set NL_WOLFRAMSCRIPT to the wolframscript executable")
+
+
+def compute_bh_coefficients(chi):
+    """
+    Compute the Kerr tables CCoeff.h5, DCoeff.h5 and Eigenvalue.h5 for spin chi
+    with coefficients/compute_coefficients.wl (Mathematica, Teukolsky package
+    of the BH Perturbation Toolkit) and store them in spin_coeff_dir(chi). The
+    tables are first written to a temporary folder, so an interrupted run
+    leaves no incomplete tables behind. Takes ~10 min on 8 kernels.
+    """
+    chi_r = round(chi, SPIN_COEFF_DIGITS) + 0.0
+    target = spin_coeff_dir(chi)
+    tmp = Path(tempfile.mkdtemp(prefix=target.name + ".tmp-", dir=COEFF_DIR))
+    print(f"computing the Kerr barrier coefficients for chi = {chi_r:+.{SPIN_COEFF_DIGITS}f} "
+          f"(Mathematica, ~10 min) -> {target}")
+    try:
+        run = subprocess.run([find_wolframscript(), "-file", str(COEFF_SCRIPT), f"{chi_r:.{SPIN_COEFF_DIGITS}f}",
+                              str(tmp)])
+        if not (tmp / "Eigenvalue.h5").is_file():
+            raise RuntimeError(f"{COEFF_SCRIPT.name} did not write Eigenvalue.h5 (exit code {run.returncode})")
+        for name in ("CCoeff.h5", "DCoeff.h5"):
+            if not (tmp / name).is_file():
+                raise RuntimeError(f"{COEFF_SCRIPT.name} did not write {name} (exit code {run.returncode})")
+            freq, c_in, c_out = _read_coeff_file(tmp / name)
+            if not (len(freq) == len(c_in) == len(c_out) and np.all(np.isfinite(c_in)) and np.all(np.isfinite(c_out))):
+                raise RuntimeError(f"{tmp / name} is incomplete")
+        # The script writes a table only after all its amplitudes were computed
+        # and found finite. Mathematica occasionally reports an error while
+        # shutting down after that; the tables are then still complete.
+        if run.returncode != 0:
+            warnings.warn(f"wolframscript exited with code {run.returncode} after writing complete tables for "
+                          f"chi = {chi_r:+.{SPIN_COEFF_DIGITS}f}; the tables are kept")
+        tmp.rename(target)
+    finally:
+        if tmp.exists():
+            shutil.rmtree(tmp)
+    return target
+
+
+def compute_spheroidal_eigenvalues(chi):
+    """Write only Eigenvalue.h5 into spin_coeff_dir(chi) (for tables computed before it existed; seconds)."""
+    chi_r = round(chi, SPIN_COEFF_DIGITS) + 0.0
+    subprocess.run([find_wolframscript(), "-file", str(COEFF_SCRIPT), f"{chi_r:.{SPIN_COEFF_DIGITS}f}",
+                    str(spin_coeff_dir(chi)), "eigenvalues-only"], check=True)
+
+
+def load_bh_coefficients(chi=None, mass=1.0):
+    """
+    Barrier coefficient tables.
+      chi = None:  the chi = 0 (Schwarzschild) tables of [D25], coefficients/{C,D}Coeff.h5.
+      chi given:   the Kerr tables for this remnant spin (signed, along the
+                   axis of the m = 2 mode), rounded to SPIN_COEFF_DIGITS
+                   decimals, from coefficients/chi_<chi>/ (CCoeff.h5,
+                   DCoeff.h5, Eigenvalue.h5). If they do not exist yet they
+                   are computed with Mathematica (compute_bh_coefficients) and
+                   kept for later runs.
+    mass = M_f/M is the remnant mass in units of the total mass (see
+    BHCoefficients, "Units"); compute_modified_ringdown.py passes M_f for the
+    Kerr tables and keeps 1 for the [D25] tables.
+    The Kerr tables use the frequency grid of the [D25] tables; this is
+    checked, since interpolate_coeff relies on its layout.
+    """
+    eigenvalue = None
+    if chi is None:
+        folder, chi_r = COEFF_DIR, 0.0
+    else:
+        folder, chi_r = spin_coeff_dir(chi), round(chi, SPIN_COEFF_DIGITS) + 0.0
+        if not all((folder / name).is_file() for name in ("CCoeff.h5", "DCoeff.h5")):
+            compute_bh_coefficients(chi)
+        elif not (folder / "Eigenvalue.h5").is_file():
+            compute_spheroidal_eigenvalues(chi)
+    freq_C, C_in, C_out = _read_coeff_file(folder / "CCoeff.h5")
+    freq_D, D_in, D_out = _read_coeff_file(folder / "DCoeff.h5")
+    if chi is not None:
+        freq_E, eigenvalue = _read_eigenvalue_file(folder / "Eigenvalue.h5")
+        freq_ref = _read_coeff_file(COEFF_DIR / "DCoeff.h5")[0]
+        for freq in (freq_C, freq_D, freq_E):
+            if freq.shape != freq_ref.shape or not np.allclose(freq, freq_ref, rtol=1e-12, atol=0):
+                raise ValueError(f"the frequency grid of {folder} differs from that of {COEFF_DIR}/DCoeff.h5")
+    return BHCoefficients(freq_C, C_in, C_out, freq_D, D_in, D_out, chi=chi_r,
+                          source=_project_relative(folder), eigenvalue=eigenvalue, mass=float(mass))
+
+
+def _project_relative(path):
+    try:
+        return str(path.relative_to(PROJECT_DIR))
+    except ValueError:
+        return str(path)
 
 
 ##############################################################################
@@ -283,6 +429,17 @@ def interpolate_coeff(f, f_new, coeff):
     return np.concatenate((int_coeff_p, int_coeff_n))
 
 
+def table_on_grid(coeffs, values, freq, length_dim, freq_table=None):
+    """
+    A table of coeffs (values on freq_table, default coeffs.freq_D) on the FFT
+    grid freq (units of the total mass M, fftfreq ordering): evaluated at
+    M_f omega = coeffs.mass * freq and converted to units of M with
+    coeffs.mass**length_dim (see BHCoefficients, "Units").
+    """
+    freq_table = coeffs.freq_D if freq_table is None else freq_table
+    return interpolate_coeff(freq_table, coeffs.mass * freq, values) * coeffs.mass**length_dim
+
+
 def c_coeff(freq):
     """
     [orig] Teukolsky-Starobinsky constant C = (l-1) l (l+1) (l+2) + 12 i omega
@@ -294,6 +451,53 @@ def c_coeff(freq):
 def d_coeff(freq):
     """[orig] Teukolsky-Starobinsky constant D = 64 i omega (128 omega^2 + 8)(1 - 2 i omega), [D25] Eq. (A3)."""
     return 64 * 1J * freq * (128 * freq**2 + 8) * (1 - 2 * 1J * freq)
+
+
+# Kerr versions of c_coeff and d_coeff (l = m = 2, units of the remnant mass),
+# from S. Xin et al., "Gravitational-wave echoes from spinning exotic compact
+# objects: numerical waveforms from the Teukolsky equation", PRD 104, 104005
+# (2021), arXiv:2105.12313, Eqs. (6), (49), (52), (53) ([X21] below). For
+# chi = 0 they reduce exactly to c_coeff and d_coeff. Checked against the
+# Teukolsky amplitudes of the BH Perturbation Toolkit through the identity
+# C_in |C|^2 = 4 omega^4 D D_in ([M22] Eq. (11), which follows from the TS
+# relations at infinity and at the horizon): it holds to 1e-12 for
+# chi = -0.09, 0.31, 0.69, 0 < |M omega| < 3.5, including p -> 0.
+
+def starobinsky_constant(freq, chi, eigenvalue, m=2):
+    """
+    Starobinsky constant C of a Kerr BH for s = 2, [X21] Eq. (53):
+        |C|^2 = (Q^2 + 4 a w m - 4 a^2 w^2) [(Q - 2)^2 + 36 a w m - 36 a^2 w^2]
+                + (2 Q - 1)(96 a^2 w^2 - 48 a w m) + 144 w^2 (M^2 - a^2),
+        Im C = 12 M w,  Re C = +sqrt(|C|^2 - (Im C)^2),
+    with M = 1, a = chi, w = freq, and Q = eigenvalue + 2, where eigenvalue is
+    SpinWeightedSpheroidalEigenvalue[-2, 2, m, a w] of the BH Perturbation
+    Toolkit. (Q = E + a^2 w^2 - 2 a w m in [X21]; the BHPT eigenvalue already
+    contains a^2 w^2 - 2 a m w, so Q = eigenvalue + 2. This is what makes the
+    identity above hold.) For chi = 0: eigenvalue = 4, C = 24 + 12 i w = c_coeff.
+    """
+    a, w, Q = chi, freq, eigenvalue + 2
+    C2 = ((Q**2 + 4 * a * w * m - 4 * a**2 * w**2) * ((Q - 2)**2 + 36 * a * w * m - 36 * a**2 * w**2)
+          + (2 * Q - 1) * (96 * a**2 * w**2 - 48 * a * w * m) + 144 * w**2 * (1 - a**2))
+    re2 = C2 - 144 * w**2
+    if np.any(re2 < 0):
+        raise ValueError("Starobinsky constant: |C|^2 < (Im C)^2 on the frequency grid")
+    return np.sqrt(re2) + 12J * w
+
+
+def horizon_ts_constant(freq, chi, m=2):
+    """
+    Horizon Teukolsky-Starobinsky factor of a Kerr BH (numerator of sigma in
+    [X21] Eq. (52), Y_in = (D / C) Z_in):
+        D = 64 (2 M r_+)^4 i p (p^2 + 4 eps^2)(-i p + 4 eps),
+        p = w - m Omega_+,  Omega_+ = a / (2 M r_+),  eps = sqrt(M^2 - a^2) / (4 M r_+),
+    with M = 1 (units of the remnant mass). D vanishes at p = 0, where the
+    Teukolsky amplitude D_in has a simple pole; the product D_in D is regular.
+    For chi = 0 (r_+ = 2, eps = 1/8, p = w) it equals d_coeff.
+    """
+    r_p = 1 + np.sqrt(1 - chi**2)
+    p = freq - m * chi / (2 * r_p)
+    eps = np.sqrt(1 - chi**2) / (4 * r_p)
+    return 64 * (2 * r_p)**4 * 1J * p * (p**2 + 4 * eps**2) * (-1J * p + 4 * eps)
 
 
 def low_pass(fft, freq, cut):
@@ -339,7 +543,7 @@ def ingoing_field(freq, fft_psi0, coeffs, cut=1e0):
     the barrier coefficients). freq[0] must already be set to 1e-4 (as in the
     original) before calling.
     """
-    C_lmw_in = interpolate_coeff(coeffs.freq_C, freq, coeffs.C_in)
+    C_lmw_in = table_on_grid(coeffs, coeffs.C_in, freq, -1, coeffs.freq_C)
     return np.fft.fft(low_pass(fft_psi0 * C_lmw_in, freq, cut), norm="ortho")
 
 
@@ -653,19 +857,31 @@ class Remnant:
 # Echoes: wall reflectivity, barrier reflectivity, transfer function
 ##############################################################################
 
+# kappa_echo = 1/(pi gamma^2) ([OA23] Eq. 20 in the form of Eq. 15), with the
+# dissipation time gamma = (4/55166)^(1/2) t_Pl = 8.5e-3 t_Pl of [OA23] Eq. (19),
+# for which the entropy of the cavity modes equals S_BH.
+KAPPA_ECHO_OA23 = 55166 / (4 * np.pi)
+
+
 @dataclass
 class EchoParameters:
-    """Echo-sector parameters of Table I / Sec. IV."""
-    alpha_echo: float = 0.4   # normalisation of the entropy-controlled delay, Eq. (10)
-    gamma_echo: float = 1.0   # wall reflectivity amplitude, Eq. (16)
-    phi_echo: float = 0.0     # phase offset / cavity phase (Table I)
-    kappa_echo: float = 1.0   # model constant in Delta_ell, Eq. (9)
-    zeta: float = 1.0         # entropy normalisation, Eq. (5) (cancels in t_echo)
+    """
+    Echo-sector parameters of Table I / Sec. IV.
+
+    The dissipation constant gamma of [WOA19, OA23] (in Planck times) enters only
+    through kappa_echo = 1/(pi gamma^2): it sets the position of the wall, i.e. the
+    delay, not the size of the reflection (see R_wall). With alpha_echo = 1,
+    echo_delay is [OA23] Eq. (20).
+    """
+    alpha_echo: float = 1.0                # normalisation of the entropy-controlled delay, Eq. (10)
+    phi_echo: float = 0.0                  # phase offset / cavity phase (Table I)
+    kappa_echo: float = KAPPA_ECHO_OA23    # model constant in Delta_ell, Eq. (9); = 1/(pi gamma^2)
+    zeta: float = 1.0                      # entropy normalisation, Eq. (5) (cancels in t_echo)
     ell: int = 2
     m: int = 2
 
     def label(self):
-        return f"alpha={self.alpha_echo:g}, gamma={self.gamma_echo:g}, phi={self.phi_echo:g}, kappa={self.kappa_echo:g}"
+        return f"alpha={self.alpha_echo:g}, kappa={self.kappa_echo:.4g}, phi={self.phi_echo:g}"
 
 
 def echo_delay(remnant, params):
@@ -680,22 +896,28 @@ def echo_delay(remnant, params):
 
 def R_wall(omega, remnant, params, t_echo=None):
     """
-    Quantum-horizon reflectivity, Eq. (16):
-        R_wall = gamma_echo exp(-|omega_tilde| / (2 T_H)) exp(+i (omega_tilde t_echo + phi_echo)),
+    Boltzmann reflectivity of the quantum horizon, [WOA19] Eqs. (1), (13), (15):
+        R_wall = exp(-|omega_tilde| / (2 T_H)) exp(+i (omega_tilde t_echo + phi_echo)),
         omega_tilde = omega - m Omega_H.
-    Two deliberate differences to the formula as printed:
-      * |omega_tilde| in the Boltzmann factor. Without the modulus the factor
-        grows exponentially for omega_tilde < 0. The Boltzmann reflectivity of
-        the original implementation, R = exp(-i omega ln(gamma |omega|)/(pi T))
-        exp(-|omega|/(2T)), uses |omega| in the same way.
+    Differences to Eq. (16) of the PDF:
+      * No amplitude prefactor gamma_echo. In [WOA19] the dissipation constant
+        gamma enters only the phase, exp(-i omega_tilde ln(gamma |omega_tilde|)/(pi T_H))
+        = exp(+i omega_tilde Delta t_echo): it fixes the position of the wall, while
+        the flux reflectivity |R_wall|^2 = exp(-|omega_tilde|/T_H) is independent of
+        gamma. Here gamma is contained in t_echo through kappa_echo = 1/(pi gamma^2).
+      * |omega_tilde| in the Boltzmann factor ([WOA19] Eqs. 1, 13). Without the
+        modulus the factor grows exponentially for omega_tilde < 0.
       * exp(+i omega_tilde t_echo): in this code's Fourier convention a delay
-        corresponds to +i omega t (the original reflectivity has the same
-        sign). Checked numerically: the first echo arrives t_echo after the ringdown.
+        corresponds to +i omega t ([WOA19] Eq. 3 has the same sign, since
+        ln(gamma |omega_tilde|) < 0). Checked numerically: the first echo arrives
+        t_echo after the ringdown.
+    The weak (logarithmic) frequency dependence of the delay in [WOA19] Eq. (15)
+    is neglected: t_echo is the constant of Eq. (10).
     """
     if t_echo is None:
         t_echo = echo_delay(remnant, params)
     omega_tilde = omega - params.m * remnant.Omega_H
-    return (params.gamma_echo * np.exp(-np.abs(omega_tilde) / (2 * remnant.T_H))
+    return (np.exp(-np.abs(omega_tilde) / (2 * remnant.T_H))
             * np.exp(1J * (omega_tilde * t_echo + params.phi_echo)))
 
 
@@ -707,17 +929,63 @@ def R_BH_T(freq, D_lmw_in, D_lmw_out):
     return (-1) * D_lmw_in / D_lmw_out * d_coeff(freq) / (4 * c_coeff(freq))
 
 
+def barrier_reflectivity_table(coeffs, m=2):
+    """
+    Barrier reflectivity of a Kerr BH on the table grid coeffs.freq_D,
+        R_BH = (-1)^(l+m+1) (D_in / D_out) D / (4 C) = -(D_in / D_out) D / (4 C)   (l = m = 2),
+    the form of [M22] Eq. (28) with the Kerr constants (starobinsky_constant,
+    horizon_ts_constant); [X21] Eq. (60) is the same expression,
+    (-1)^(m+1) sigma D_in / (4 D_out) with sigma = D / C. The pole of D_in at
+    p = omega - m Omega_+ = 0 cancels against the zero of D, so R_BH is a
+    smooth function that can be interpolated, unlike D_in itself. For
+    0 < omega < m Omega_+ it exceeds 1 (superradiance).
+    """
+    f = coeffs.freq_D
+    D = horizon_ts_constant(f, coeffs.chi, m)
+    C = starobinsky_constant(f, coeffs.chi, coeffs.eigenvalue, m)
+    return (-1) * coeffs.D_in / coeffs.D_out * D / (4 * C)
+
+
+def barrier_reflectivity(freq, coeffs, D_lmw_out):
+    """
+    R_BH on the FFT grid freq (units of M). [D25] tables (coeffs.eigenvalue is
+    None, mass = 1): the original R_BH_T, with D_in interpolated. Kerr tables:
+    barrier_reflectivity_table (dimensionless) evaluated at M_f omega
+    (interpolating D_in across its pole would not work).
+    """
+    if coeffs.eigenvalue is None:
+        return R_BH_T(coeffs.mass * freq, table_on_grid(coeffs, coeffs.D_in, freq, -1), D_lmw_out)
+    return table_on_grid(coeffs, barrier_reflectivity_table(coeffs), freq, 0)
+
+
 def transfer_function(R_w, R_bh, D_lmw_out):
     """
     [orig, adapted] Full (all echoes summed) transfer function acting on the
     ingoing field, [D25] Eq. (A11) with l = m = 2 and gamma = 4:
         K = (-1)^(l+m+1) R / ((1 - R R_BH) gamma D_out) = -R / ((1 - R R_BH) 4 D_out).
-    (gamma = 4 is the ECO value of [D25]; it is unrelated to gamma_echo of the
-    PDF, which sits inside R.) Change: the reflectivity R is the natural-log
-    wall R_wall instead of the original Boltzmann reflectivity. The original
+    (gamma = 4 is the ECO value of [D25]; it is unrelated to the dissipation
+    constant gamma of [WOA19, OA23], which enters R_wall through kappa_echo.)
+    Change: the reflectivity R is R_wall, i.e. the original Boltzmann
+    reflectivity with the co-rotating frequency of the Kerr remnant and the
+    natural-log delay t_echo (Eq. 10) instead of -ln(gamma |omega|)/(pi T). The original
     also contained a truncated n-echo sum, which was not used and is omitted.
     """
     return (-1) * R_w / ((1 - R_w * R_bh) * (4 * D_lmw_out))
+
+
+def cavity_round_trip(freq, remnant, params, coeffs):
+    """
+    R_wall R_BH on an FFT frequency grid freq (np.fft.fftfreq ordering, even
+    length, as in echo_strain; only |freq| <= 3.96 is meaningful): the
+    amplification of one round trip between wall and barrier. Where
+    |R_wall R_BH| >= 1 the sum over echoes does not converge and the transfer
+    function 1/(1 - R_wall R_BH) can have poles on or near the real axis. For a
+    spinning remnant this can happen in the superradiant band
+    0 < omega < m Omega_H, where |R_BH| > 1 (ergoregion instability of a
+    reflecting horizon).
+    """
+    D_lmw_out = table_on_grid(coeffs, coeffs.D_out, freq, 3)
+    return R_wall(freq, remnant, params) * barrier_reflectivity(freq, coeffs, D_lmw_out)
 
 
 def echo_strain(time, Y_in_hybrid, t0, remnant, params, coeffs, taper_width=8.0, t_hold=100.0,
@@ -741,14 +1009,14 @@ def echo_strain(time, Y_in_hybrid, t0, remnant, params, coeffs, taper_width=8.0,
     freq = np.fft.fftfreq(len(time), dt) * 2 * np.pi
     freq[0] = 1e-4  # as in the original: avoid division by zero
 
-    D_lmw_in = interpolate_coeff(coeffs.freq_D, freq, coeffs.D_in)
-    D_lmw_out = interpolate_coeff(coeffs.freq_D, freq, coeffs.D_out)
+    D_lmw_out = table_on_grid(coeffs, coeffs.D_out, freq, 3)
 
     t_echo = echo_delay(remnant, params)
-    K = transfer_function(R_wall(freq, remnant, params, t_echo), R_BH_T(freq, D_lmw_in, D_lmw_out), D_lmw_out)
-    # The coefficient tables end at |omega| = 3.96; beyond that the splines
+    K = transfer_function(R_wall(freq, remnant, params, t_echo), barrier_reflectivity(freq, coeffs, D_lmw_out),
+                          D_lmw_out)
+    # The coefficient tables end at |M_f omega| = 3.96; beyond that the splines
     # extrapolate. R_wall is ~exp(-25) there, but to be safe K is set to zero.
-    K[np.abs(freq) > np.max(np.abs(coeffs.freq_D))] = 0
+    K[np.abs(coeffs.mass * freq) > np.max(np.abs(coeffs.freq_D))] = 0
 
     Z_22_inf_echo = K * np.fft.ifft(seed, norm="ortho")
     h_echo = -4 * np.fft.fft(high_pass(low_pass(1 / freq**2 * Z_22_inf_echo, freq, lp_cut), freq, hp_cut), norm="ortho")
@@ -796,6 +1064,9 @@ def load_echoes(event):
             res[key] = f[key][()]
         n_sets = len(res["t_echo"])
         values = {k: f["echo_params"][k][()] for k in f["echo_params"]}
+    if "gamma_echo" in values:
+        raise ValueError(f"{echo_file(event)} was written with the former wall reflectivity "
+                         "(amplitude gamma_echo); rerun compute_echoes.py")
     res["echo_sets"] = [EchoParameters(**{k: (int(v[j]) if k in ("ell", "m") else float(v[j]))
                                              for k, v in values.items()}) for j in range(n_sets)]
     return res

@@ -99,7 +99,7 @@ def plot_echoes(rd, ec, event, lambda_echo):
         for j, params in enumerate(ec["echo_sets"]):
             h_tot = h_hyb[i_lam] + ec["h_echo"][i_lam, j]
             ax.plot(th, np.real(h_tot), lw=1.0, color=ECHO_COLORS[j % len(ECHO_COLORS)],
-                    label=rf"$\alpha_{{\rm echo}}={params.alpha_echo:g}$, $\gamma_{{\rm echo}}={params.gamma_echo:g}$"
+                    label=rf"$\alpha_{{\rm echo}}={params.alpha_echo:g}$, $\kappa_{{\rm echo}}={params.kappa_echo:.4g}$"
                           rf" ($t_{{\rm echo}}={ec['t_echo'][j]:.0f}M$)")
         ax.set_xlim(-200, t_max)
         ax.set_ylabel(r"Re $h_{22}$")

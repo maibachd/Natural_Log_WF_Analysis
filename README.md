@@ -17,6 +17,14 @@ which follows
   M. A. Scheel, Y. Chen, *Gravitational-wave echoes from numerical-relativity waveforms via
   spacetime construction near merging compact objects*, PRD 105, 104007 (2022).
 
+The wall reflectivity and the echo delay follow
+
+* **[WOA19]** Q. Wang, N. Oshita, N. Afshordi, *Echoes from quantum black holes*, PRD 101, 024031
+  (2020), [arXiv:1905.00446](https://arxiv.org/abs/1905.00446) (ref. [17] of the PDF),
+* **[OA23]** N. Oshita, N. Afshordi, *From entropy to echoes: counting the quasi-normal modes and
+  the quantum limit of silence*, PLB 841, 137901 (2023),
+  [arXiv:2302.08964](https://arxiv.org/abs/2302.08964) (refs. [15] and [24] of the PDF).
+
 Parts taken from the original implementation of that computation (not included here) are marked
 `[orig]` in the code. Everything they do is written out in the docstrings and in the section
 [Origin of the echo machinery](#origin-of-the-echo-machinery) below, so this repository is
@@ -40,11 +48,12 @@ self-contained.
 4. **Build the modified ringdown** of `h` and `Y_in` (next section): the NR waveform with its QNM
    content replaced by the deformed one. `λ_NH = 0` is GR.
 5. Compute echoes from the modified `Y_in` with the transfer function of [D25], where the
-   reflectivity is the natural-log quantum-horizon wall (Eq. 16):
+   reflectivity is the Boltzmann reflectivity of the quantum horizon ([WOA19] Eqs. 1, 13, 15) with
+   the natural-log delay (Eqs. 9–10):
 
    ```
    K(ω)    = -R_wall / ((1 - R_wall R_BH) 4 D_out)                              ([D25] Eq. A11)
-   R_wall  = γ_echo exp(-|ω̃|/(2 T_H)) exp(+i(ω̃ t_echo + φ_echo)),   ω̃ = ω - m Ω_H
+   R_wall  = exp(-|ω̃|/(2 T_H)) exp(+i(ω̃ t_echo + φ_echo)),   ω̃ = ω - m Ω_H
    t_echo  = α_echo/(2π T_H) (Λ_log + Δ_ℓ),   Δ_ℓ = ln[κ_echo/(ζ ℓ(ℓ+1))]   (Eqs. 9, 10 = Eq. 15)
    h_echo  = -4 FFT[K Y_seed / ω²]
    ```
@@ -125,6 +134,30 @@ low-spin events. Its spread under fits from 5, 10 and 15 M is ≤ 4%, except 020
 `t_a = t0` and n ≤ 2 deformed, the deformation reaches 27× the peak.
 
 
+## Wall reflectivity and echo parameters
+
+* **Boltzmann reflectivity** ([WOA19] Eqs. 3, 13): `R_wall = e^{−|ω̃|/2T_H} exp[−iω̃ ln(γ|ω̃|)/(πT_H)]`,
+  with γ the dissipation constant of the near-horizon modes (Planck units).
+  * The flux reflectivity `|R_wall|² = e^{−|ω̃|/T_H}` does not depend on γ.
+  * γ only sets the position of the wall, `x₀ = ln(γ|ω̃|)/(2πT_H)` ([WOA19] Eq. 14), i.e. the
+    delay `Δt_echo = −ln(γ|ω̃|)/(πT_H)` ([WOA19] Eq. 15).
+* **Delay and κ_echo.** [OA23] Eq. 20 gives `t_echo = (2πT_H)⁻¹ ln[S_BH/(π ℓ(ℓ+1) γ²)]` (γ in
+  Planck times). This is Eq. 10 with `α_echo = 1` and **`κ_echo = 1/(πγ²)`**: γ enters the pipeline
+  only through κ_echo.
+* **Default:** `α_echo = 1`, `κ_echo = 55166/(4π) = 4390` (`nl_utils.KAPPA_ECHO_OA23`), the
+  dissipation time `γ = (4/55166)^{1/2} t_Pl = 8.5·10⁻³ t_Pl` for which the entropy of the cavity
+  modes equals S_BH ([OA23] Eq. 19). `φ_echo = 0`.
+* **Differences to Eq. 16 of the PDF:**
+  * no amplitude prefactor `γ_echo` (the PDF puts γ there; in [WOA19, OA23] it only enters the delay);
+  * `|ω̃|` in the Boltzmann factor ([WOA19] Eqs. 1, 13);
+  * `exp(+iω̃ t_echo)`: a delay in this code's Fourier convention ([WOA19] Eq. 3 has the same sign,
+    since ln(γ|ω̃|) < 0).
+* **Approximation:** the delay of [WOA19] Eq. 15 depends logarithmically on ω̃; the pipeline uses the
+  constant t_echo of Eq. 10. For M = 10⁶ M☉ and |ω̃| = 0.05–0.5/M, [WOA19] Eq. 15 gives
+  803–822 M (1936) and 921–942 M (1155) for γ = 1, against t_echo = 796 M and 912 M from Eq. 10
+  with α_echo = 1, κ_echo = 1/π, i.e. agreement to 1–3%.
+
+
 ## Files
 
 | file | purpose |
@@ -135,13 +168,18 @@ low-spin events. Its spread under fits from 5, 10 and 15 M is ≤ 4%, except 020
 | `plot_test_run.py` | **Step 3.** Two test figures for one event: (1) original vs. deformed ringdowns, (2) full time series with echoes for several echo parameters, plus the first echo for the different ringdown deformations. Writes `output/plots/`. |
 | `fetch_remnant_metadata.py` | Regenerates `remnant_metadata.json` from the SXS catalogue. Only needed for new events; requires `sxs` and internet. |
 | `remnant_metadata.json` | Remnant mass and spin, plus the initial binary parameters, of the 10 events (SXS catalogue v3.0.0). |
-| `coefficients/CCoeff.h5`, `coefficients/DCoeff.h5` | Tabulated barrier coefficients `C_in/out`, `D_in/out` of the ℓ = 2 Schwarzschild potential, used in [D25]. See [Origin of the echo machinery](#origin-of-the-echo-machinery). |
+| `coefficients/CCoeff.h5`, `coefficients/DCoeff.h5` | Tabulated barrier coefficients `C_in/out`, `D_in/out` of the ℓ = 2 Schwarzschild potential (χ = 0), used in [D25]. See [Origin of the echo machinery](#origin-of-the-echo-machinery). Used with `--schwarzschild-coefficients`. |
+| `coefficients/chi_<χ>/{C,D}Coeff.h5`, `Eigenvalue.h5` | The same tables for a Kerr remnant of spin χ (signed, 4 decimals, e.g. `chi_+0.0217`), plus the spheroidal eigenvalue. Computed automatically on first use and then reused. See [Barrier coefficients for spinning remnants](#barrier-coefficients-for-spinning-remnants). |
+| `coefficients/Coeff_QG_Mem.nb` | Mathematica notebook that documents how the tables are computed with the BH Perturbation Toolkit. |
+| `coefficients/compute_coefficients.wl` | Non-interactive version of the notebook's Teukolsky chapter with the spin as a parameter; called by `nl_utils.load_bh_coefficients`. |
 | `<event>/{Strain,Psi0,Psi4}.h5` | CCE data per event (modes `Y_l{l}_m{m}.dat`: time, Re, Im). Folders are named `205`, `1936`, …; the code accepts `205` and `0205`. |
 
 ## Running
 
 ```bash
 pip install -r requirements.txt          # qnm is the only package not in a standard scientific stack
+# Kerr barrier tables (first run per remnant only): Mathematica with the Teukolsky package of the
+# BH Perturbation Toolkit, see "Barrier coefficients for spinning remnants"
 
 python compute_modified_ringdown.py --events 1936            # step 1 (default: all 10 events, ~5 s each)
 python compute_echoes.py --events 1936                       # step 2
@@ -168,9 +206,12 @@ Important options (see `--help`):
     original implementation, which used n = 5).
   * `--upper-t 100` – end of the fit windows.
   * `--t-end 3000` – end of the time grid; it must contain the echoes.
+  * `--schwarzschild-coefficients` – use the χ = 0 tables of [D25] for every event instead of the
+    Kerr tables for the remnant spin. `compute_echoes.py` always uses the tables of the ringdown file.
 * `compute_echoes.py`
-  * `--echo alpha_echo=0.4,gamma_echo=1,phi_echo=0,kappa_echo=1,zeta=1` – repeatable, one per echo-parameter set.
-  * Defaults: (α, γ) = (0.4, 1), (0.7, 1), (0.4, 0.5).
+  * `--echo alpha_echo=1,kappa_echo=4390,phi_echo=0,zeta=1` – repeatable, one per echo-parameter set.
+  * Default: one set, α_echo = 1, κ_echo = 55166/(4π) = 4390, φ_echo = 0 (see
+    [Wall reflectivity and echo parameters](#wall-reflectivity-and-echo-parameters)).
 * `plot_test_run.py`
   * `--event`.
   * `--lambda-echo 1` – which deformed ringdown is used in the echo-parameter comparison.
@@ -184,6 +225,8 @@ Important options (see `--help`):
   * `method`, `t0` (scanned ringdown start = start of the echo seed)
   * `t_attach` (`t_a`, or `t0` for replace), `t_ref` (time the QNM coefficients refer to), `switch_width`
   * `n_overtones`, `n_scan`, `upper_t`, `Lambda_log`, `p`, `zeta`, `m_total_solar`, `t_peak`
+  * `coeff_tables` (folder of the barrier tables, `coefficients` = χ = 0 tables of [D25]),
+    `coeff_chi` (spin of the tables); the same two attributes are in the echo file
   * fit mismatches
   * residual only: `t_fit`, `t_cont`, `cont_width`
   * replace only: `jump_h`, `jump_Y_in` (fit residual at `t0` / peak)
@@ -204,6 +247,8 @@ Important options (see `--help`):
 * `time`
 * `lambda_nh`
 * `t_echo[set]`
+* `max_round_trip[set]` – max |R_wall R_BH| (≥ 1: the echo sum diverges)
+* `precursor[set]` – echo before the ringdown relative to its maximum (FFT wrap-around)
 * `echo_params/*`
 * `h_echo[λ, set, t]`
 
@@ -221,7 +266,9 @@ The full strain is `hybrid/h[λ] + h_echo[λ, set]`, on the same time axis.
 ## Conventions
 
 * Units: times and frequencies are in units of the total mass `M` of the simulation, G = c = 1.
-  All frequencies are angular. `t = 0` is the peak of |h_22|.
+  All frequencies are angular. `t = 0` is the peak of |h_22|. The barrier tables are in units of
+  the remnant mass and are converted (see [Units](#units)); the Kerr QNMs, T_H and Ω_H are
+  converted with M_f as well.
 * Fourier transforms (convention of the original implementation): time → frequency is
   `np.fft.ifft`, frequency → time is `np.fft.fft`, both with `norm="ortho"`. A signal `e^{-iωt}`
   with ω > 0 sits at positive frequency, and **a time delay Δ multiplies the spectrum by `e^{+iωΔ}`**.
@@ -266,14 +313,161 @@ These parts follow the original implementation of [D25] App. A. Its content, wri
   of a late-time numerical artefact.
 * **Transfer function** ([D25] Eq. A11 with ℓ = m = 2 and γ = 4, the ECO value):
   `K = −R/((1 − R R_BH) 4 D_out)`.
-  * The `γ = 4` of [D25] is unrelated to `γ_echo` of the PDF, which sits inside `R_wall`.
-  * The original reflectivity was the Boltzmann model
-    `R = exp(−iω ln(γ_β|ω|)/(π T)) exp(−|ω|/(2T))`.
+  * The `γ = 4` of [D25] is unrelated to the dissipation constant γ of [WOA19, OA23].
+  * The original reflectivity was the Boltzmann model of [WOA19] Eq. 13 for χ = 0,
+    `R = exp(−iω ln(γ_β|ω|)/(π T)) exp(−|ω|/(2T))`. `R_wall` is the same model with the
+    co-rotating frequency ω̃ and the constant natural-log delay t_echo (γ_β → κ_echo).
 * **Strain** ([D25] Eq. A10): `h_echo = −4 FFT[high_pass(low_pass(K Y_seed/ω², |ω| ≤ 10), |ω| ≥ 7·10⁻⁵)]`.
   The filters and the factor −4 are those of the original implementation.
 
 
+## Barrier coefficients for spinning remnants
+
+For each event the barrier is that of a Kerr BH with the remnant spin χ_f (signed z-component
+from `remnant_metadata.json`, the axis of the m = 2 mode). `--schwarzschild-coefficients` restores
+the χ = 0 barrier of [D25] for every event.
+
+Additional reference:
+
+    [X21] S. Xin et al., "Gravitational-wave echoes from spinning exotic compact objects:
+          numerical waveforms from the Teukolsky equation", PRD 104, 104005 (2021),
+          arXiv:2105.12313 (ref. [88] of [D25]).
+
+[M22] and [D25] treat only non-spinning remnants ([D25] Sec. III: the reconstruction of [M22] "is
+adapted to non-spinning remnants"). [X21] gives the Kerr form of the same quantities.
+
+### Tables
+
+* **What is computed.** The "Up" amplitudes of the Teukolsky radial function of the
+  BH Perturbation Toolkit (Teukolsky package, Mathematica), ℓ = m = 2, in units of the remnant
+  mass, plus the spheroidal eigenvalue:
+  * `DCoeff.h5`: `TeukolskyRadial[-2, 2, 2, χ, ω]["Up"]["Amplitudes"]`;
+  * `CCoeff.h5`: `TeukolskyRadial[+2, 2, 2, χ, ω]["Up"]["Amplitudes"]`;
+  * `inc` = `"Incidence"`, `ref` = `"Reflection"`; same file layout as the χ = 0 tables;
+  * `Eigenvalue.h5`: `SpinWeightedSpheroidalEigenvalue[-2, 2, 2, χ ω]`.
+
+  This is the chapter "Same Coefficients for the Teukolsky Equation" of
+  `coefficients/Coeff_QG_Mem.nb`. `coefficients/compute_coefficients.wl` is that chapter as a
+  script with the spin as a parameter (the notebook itself has the spin hard-coded and is
+  interactive). Differences to the notebook:
+  * The notebook gets ω < 0 from ω > 0 by complex conjugation. That uses the χ = 0 symmetry; for
+    χ ≠ 0 and fixed m = 2 it does not hold, so the script computes negative frequencies directly.
+  * Both amplitudes come from one `TeukolskyRadial` call per frequency, on parallel kernels.
+  * It also writes `Eigenvalue.h5`.
+* **When.** `nl_utils.load_bh_coefficients(χ)` looks for `coefficients/chi_<χ>/` (χ rounded to
+  4 decimals) and runs the script if the tables are missing (~12 min on 8 kernels; only the
+  eigenvalues, a few seconds, if just `Eigenvalue.h5` is missing). The result is kept, so this
+  happens once per remnant. Requirements: Mathematica with the BH Perturbation Toolkit;
+  `wolframscript` is looked up in `$NL_WOLFRAMSCRIPT`, the `PATH` and `/Applications/Mathematica.app`.
+  Mathematica sometimes reports an error while shutting down, after the tables are written; the
+  loader then checks the files and keeps them.
+* **Frequency grid.** The grid of the χ = 0 tables (4798 values, |Mω| ≤ 3.96) is reused unchanged,
+  because `interpolate_coeff` relies on its layout (the four duplicated frequencies). The loader
+  checks that the grids agree. At χ = 0 the script reproduces the [D25] tables (relative
+  difference ≤ 4·10⁻¹⁰).
+
+### Barrier reflectivity
+
+Only `R_BH` contains Teukolsky–Starobinsky (TS) constants; `Y_in = Ψ0 C_in` and the transfer
+function `K = −R_wall/((1 − R_wall R_BH) 4 D_out)` keep their form. In particular the factor
+`(−1)^{ℓ+m+1}/4` of the wall boundary condition is the same for Kerr ([X21] Eq. 54, [M22] Eq. 24).
+
+    R_BH = −(D_in/D_out) 𝒟/(4 C)                         ([M22] Eq. 28, [X21] Eq. 60)
+    𝒟    = 64 (2Mr₊)⁴ i p (p² + 4ε²)(−ip + 4ε)            ([X21] Eq. 52)
+    p    = ω − mΩ₊,  Ω₊ = a/(2Mr₊),  ε = √(M² − a²)/(4Mr₊)  ([X21] Eqs. 6, 49)
+    |C|² = (Q² + 4aωm − 4a²ω²)[(Q − 2)² + 36aωm − 36a²ω²]
+           + (2Q − 1)(96a²ω² − 48aωm) + 144ω²(M² − a²),
+    Im C = 12Mω,  Re C = +√(|C|² − (Im C)²)                ([X21] Eq. 53)
+
+with M = 1 (remnant mass), a = χ, and `Q = eigenvalue + 2` (the BHPT eigenvalue already contains
+a²ω² − 2amω). For χ = 0 these are exactly `c_coeff` = 24 + 12iω and `d_coeff` of [D25] Eq. A3
+(`starobinsky_constant`, `horizon_ts_constant`, `barrier_reflectivity_table` in `nl_utils`).
+
+`D_in` has a simple pole at p = 0 (|D_in| changes by a factor 20 between neighbouring grid
+points there), and 𝒟 has a zero there. `R_BH` is therefore built on the table grid, where the
+product is regular, and only then interpolated. Interpolating `D_in` itself (as in the χ = 0
+code) would put a spike into `R_BH` (|R_BH| up to 350 for χ = 0.06).
+
+### Units
+
+The tables are in units of the remnant mass M_f (`TeukolskyRadial` sets the BH mass to 1; the pole
+of `D_in` sits at Mω = mχ/(2r₊) with M = 1), while the code works in units of the total mass M.
+For the Kerr tables the code therefore (`table_on_grid`)
+* evaluates the tables at M_f ω, and
+* converts the dimensionful amplitudes to units of M, with `M_f^d` for dimension length^d. From
+  the asymptotic forms of the "Up" solutions ([M22] Eq. 5): C_in, D_in ~ length⁻¹,
+  D_out ~ length³; R_BH is dimensionless.
+
+The [D25] tables (`--schwarzschild-coefficients`) are used as in the original implementation, at
+Mω and without conversion, so that the earlier results stay reproducible.
+
+Checks:
+* **Units.** Combining the TS relations, `−C_in/(4 D_out) = R_BH 4ω⁴/C*` must hold in units of M,
+  with the physical ω in ω⁴ — as the CCE data confirm (see below: the factor 4 is the same for
+  1936 and 1155 only with the physical ω). For 1155 it holds to 1.5·10⁻³ (interpolation) with the
+  conversion above; without any conversion (the earlier code) it is off by 18%, with other
+  exponents by 5–14%. On the FFT grid of 1155, |R_BH| > 1 exactly for 0 < ω < mΩ_H = 0.4176/M,
+  i.e. the superradiant edge of the barrier now coincides with ω̃ = 0 of `R_wall`.
+* **TS identity.** The two TS relations imply `C_in |C|² = 4ω⁴ 𝒟 D_in` ([M22] Eq. 11). With the
+  Teukolsky tables it holds to 10⁻¹² for χ = −0.09, 0.31, 0.69, Mω between −3.5 and 3.5, and
+  p = ±0.003. With Q = eigenvalue + 2 + a²ω² − 2amω (i.e. the formula read literally with the BHPT
+  eigenvalue) it is off by up to a factor 3.6.
+* **χ → 0.** Fed the χ = 0 tables, the Kerr code path gives the same `R_BH` as the original code
+  to 4·10⁻⁸.
+* **Superradiance.** For χ = 0.69 (1155), on the table grid: |R_BH| > 1 exactly for 0 < M_f ω < M_f mΩ₊ = 0.397 (at most
+  1.0011) and ≤ 1 elsewhere; nothing in the construction enforces this.
+* **TS relation at infinity, CCE data** (as [M22] Fig. 6, on the window −400 M … 250 M):
+  `Ψ4 = 4 × 4ω⁴ Ψ0 / C*` with relative residual 6% (1936) and 3% (1155) for the Schwarzschild form
+  of C. The factor 4 is a normalisation of the CCE Ψ0 and, with the sign of `Ψ4 = −ḧ`, explains
+  the factor −4 of the strain conversion. For 1155 the Kerr C fits the data worse (10%): the NR
+  modes are spherical-harmonic modes, while the Kerr C belongs to spheroidal modes (see below).
+  R_BH uses the Kerr C, since it relates Teukolsky amplitudes, for which the identity above holds.
+* **End to end** (λ_NH = −1, 0, 1; with the units above; first echo set α_echo = 0.4, κ_echo = 1;
+  the current default α_echo = 1, κ_echo = 4390 gives the same numbers to the digits shown:
+  1936 0.0118 and 2.4%, 1155 0.35 and 9%):
+  * 1936 (χ = 0.02): the first echo changes by 2% with respect to the χ = 0 barrier (0.0118 vs.
+    0.0116), the effect of λ_NH = +1 on it is 2.4% (2.2% with the χ = 0 barrier). The GR check
+    gives 0.
+  * 1155 (χ = 0.69): the GR check gives 0; the first echo is 0.34, against 0.12 with the χ = 0
+    barrier and a ringdown peak of 0.40; the effect of λ_NH = +1 on it is 9% (7%). This follows from the model: combining the two TS
+    relations, the first echo is `R_wall R_BH` times the original signal ([M22] Eq. 40), and near
+    Mω ≈ 0.42 the Kerr barrier reflects almost completely, `R_wall` is maximal (ω = mΩ_H), and the
+    merger of this binary has most of its power.
+  * `--schwarzschild-coefficients` reproduces the earlier output files of 1936 (to 10⁻¹⁴, i.e.
+    round-off of the installed scipy version).
+
+### Remaining approximations for spinning remnants
+
+* **Spherical vs. spheroidal modes.** The NR Ψ0 (2,2) mode is a spherical-harmonic mode, the
+  Teukolsky amplitudes belong to the spheroidal (2,2) mode; the mixing (order aω) is neglected, as
+  in [X21]. Like [M22] Eq. 12, the TS relations are used for one (ℓ, m, ω); this needs the
+  reflection symmetry of non-precessing binaries.
+* **Nearly lossless cavity.** For co-rotating frequencies near mΩ_H a spinning barrier reflects
+  almost completely (χ = 0.69: |R_BH| = 0.9998 at Mω = 0.40, against 0.56 for χ = 0), and this is
+  where `R_wall` is largest: the edge of the superradiant band (|R_BH| = 1) coincides with the
+  maximum of `R_wall` (ω̃ = 0, |R_wall| = 1). The round trip `|R_wall R_BH|` therefore comes
+  close to 1 there without exceeding it (0.99999 on a fine grid, 0.997–1.000 on the FFT grids of
+  1155), as in [WOA19] Sec. V, Fig. 8: the Boltzmann factor suppresses the ergoregion instability,
+  but only barely at ω̃ ≈ 0. The pole of the transfer function lies close to the real axis.
+* **Slowly decaying echoes.** For 1155 (default echo parameters, λ_NH = +1) the echo peaks are
+  0.35, 0.17, 0.11, 0.080, 0.063, 0.052, 0.044, 0.038, 0.033, i.e. they decay as 1/k, as described
+  by [WOA19] (Sec. IV B: 1/t for the first ~20 echoes, then exponential). Between the echoes a
+  narrow-band ringing at ω̃ ≈ 0 persists. For the χ = 0.02 remnant 1936 the peaks fall from
+  0.012 to 1.1·10⁻³ and 2.9·10⁻⁴.
+* **FFT wrap-around.** The echo train that has not decayed by the end of the grid wraps around in
+  the FFT. `compute_echoes.py` reports the echo before the ringdown relative to its maximum and
+  warns above 3·10⁻³; it also warns if `|R_wall R_BH|` ≥ 1 on the FFT grid.
+  * 1155: 6.4·10⁻² (`--t-end 3000`), 5.3·10⁻² (6000), 4.2·10⁻² (9000). A longer grid hardly
+    helps, because of the 1/k decay. The first echo changes by 1% between 3000 and 9000.
+  * 1936: 1.0·10⁻³ (3000), 4.7·10⁻⁴ (6000).
+
 ## Checks
+
+The numbers in this section, and the files in `output/`, were produced with the χ = 0 tables
+(before the Kerr tables were introduced; today `--schwarzschild-coefficients`) and with the former
+echo parameter sets α_echo = 0.4 and 0.7 (κ_echo = 1, no amplitude factor; plus a set with the
+former amplitude factor γ_echo = 0.5, which no longer exists). The echo files in `output/` therefore
+cannot be read by `nl_utils.load_echoes` any more; rerun `compute_echoes.py`.
 
 * **Coefficient assignment.** With `_in = 'ref'`, `_out = 'inc'`, `|R_BH|²` agrees with an
   independent Regge–Wheeler integration of the Schwarzschild ℓ = 2 barrier to four digits
@@ -282,13 +476,15 @@ These parts follow the original implementation of [D25] App. A. Its content, wri
   * exactly (difference 0) for 9 events;
   * 7·10⁻⁴ for 0206, whose continuation starts at 86 M, before the seed is held.
 * **Echo timing.** The first echo arrives at `t_echo` (Eq. 10): 320 M (α = 0.4) and 561 M (α = 0.7)
-  for 1936.
+  for 1936 (κ_echo = 1); with the current default (α = 1, κ_echo = 4390) 834 M.
+* **Wall reflectivity.** With α_echo = 0.4, κ_echo = 1 the current `R_wall` reproduces the former
+  set (α = 0.4, γ_echo = 1) to 5·10⁻¹⁶ (1936).
 * **Event 1936 (test run).** `Λ_log = 204.9` for M = 10⁶ M☉, so `Λ_log^{-1/2} = 0.070`: λ_NH = ±1
   means a ±7% shift in ω and τ.
   * Amplitude fits from 10 M: mismatch 1.7·10⁻⁶ (h), 4.4·10⁻³ (Y_in).
   * Fundamental-mode amplitude spread: 2% (h), 15% (Y_in).
   * max|h_echo| = 1.2·10⁻².
-* **All events**, residual method, λ_NH = +1 (echo set α = 0.4, γ = 1):
+* **All events**, residual method, λ_NH = +1 (echo set α = 0.4, κ_echo = 1):
 
   | event | χ_f | t0 [M] | max\|Δh\|/peak | first-echo change | spread n=0 (h / Y_in) |
   |---|---|---|---|---|---|
@@ -315,8 +511,10 @@ These parts follow the original implementation of [D25] App. A. Its content, wri
   * the t0 scan has its minimum at the edge of the interval (10 M);
   * the amplitudes are less stable (h 12%, Y_in 41%);
   * the data are short enough that the continuation starts inside the fit window.
-* **Spinning remnants (1155, 0334, 2108)** are only approximately described, because of the
-  Schwarzschild barrier (decision 6).
+* **Spinning remnants.** The barrier is that of the Kerr remnant, but the spherical/spheroidal
+  mode mixing is neglected, and near mΩ_H the cavity is nearly lossless (slowly decaying echoes,
+  FFT wrap-around); see
+  [Remaining approximations for spinning remnants](#remaining-approximations-for-spinning-remnants).
 * The NR strain flattens at |h − h_const| ~ 10⁻⁶–10⁻⁴ after ~90 M (numerical floor / non-QNM
   content). The residual method keeps it, because it keeps the data.
 * The output files are large (~30 MB per event). `--t-save-min` controls how much of the modified
